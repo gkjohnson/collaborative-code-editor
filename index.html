@@ -74,19 +74,25 @@
             const edindex = ed.session.doc.positionToIndex(e.end)
             op.push(stindex)
 
+            console.log(e.end, edindex)
+
+            console.log(e.action)
             if (e.action === 'insert') {
                 op.push(e.lines.join(ed.session.doc.getNewLineCharacter()))
             } else if (e.action === 'remove') {
-                op.push({ d: edindex - stindex})
+                const delCt = e.lines.join(ed.session.doc.getNewLineCharacter()).length
+                op.push({ d: delCt})
             }
+
+            console.log(op)
 
             sharedoc.submitOp(op)
         })
         ed.on('changeSelection', e => {
             const range = ed.getSelectionRange()
-            const stIndex = ed.session.doc.positionToIndex(range.start)
-            const edIndex = ed.session.doc.positionToIndex(range.end)
-            io.emit('anchor-update', [stIndex, edIndex])
+            const stindex = ed.session.doc.positionToIndex(range.start)
+            const edindex = ed.session.doc.positionToIndex(range.end)
+            io.emit('anchor-update', [stindex, edindex])
         })
 
         // sharedb
