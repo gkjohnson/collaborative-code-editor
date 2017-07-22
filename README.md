@@ -1,6 +1,6 @@
 # collaborative-code-editor
 
-Collaborative Ace Editor example with selection synchronization, active user display, and real time text collaboration using ShareDB. The purpose of this repo is to give a basic example setup for ShareDB with Ace
+Collaborative Ace Editor example with selection synchronization, active user display, and real time text collaboration using ShareDB. The purpose of this repo is to give a basic example setup for [ShareDB](https://github.com/share/sharedb) with [Ace Editor](https://github.com/ajaxorg/ace)
 
 ![Editor Example](/example-image.png)
 
