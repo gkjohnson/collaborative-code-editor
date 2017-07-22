@@ -4,6 +4,8 @@
     <title>Collaborative Ace Editor</title>
 
     <script type="text/javascript" src="/node_modules/ace-builds/src-min/ace.js"></script>
+    <script type="text/javascript" src="/sharedb-dist/sharedb-client.min.js"></script>
+    <script type="text/javascript" src="/sharedb-dist/ot-text.min.js"></script>
     <script type="text/javascript" src="/socket.io/socket.io.js"></script>
 
     <style type="text/css">
@@ -33,12 +35,21 @@
         #users li {
             width: 25px;
             height: 25px;
-            background: red;
             margin: 2px;
             color: white;
             float: right;
             text-align: center;
             line-height: 25px;
+        }
+
+        .ace_marker-layer div {
+            border-radius: 0;
+            position: absolute;
+            opacity: 0.5;
+        }
+
+        .ace_marker-layer .empty {
+            background-color: transparent;
         }
 
     </style>
@@ -52,27 +63,117 @@
     
     <script>
         // initialize editor
+        let stopWatch = false
         const ed = ace.edit('editor')
         ed.setOption('printMargin', false)
+        ed.on('change', e => {
+            if (stopWatch) return
+
+            const op = []
+            const stindex = ed.session.doc.positionToIndex(e.start)
+            const edindex = ed.session.doc.positionToIndex(e.end)
+            op.push(stindex)
+
+            if (e.action === 'insert') {
+                op.push(e.lines.join(ed.session.doc.getNewLineCharacter()))
+            } else if (e.action === 'remove') {
+                op.push({ d: edindex - stindex})
+            }
+
+            sharedoc.submitOp(op)
+        })
+        ed.on('changeSelection', e => {
+            const range = ed.getSelectionRange()
+            const stIndex = ed.session.doc.positionToIndex(range.start)
+            const edIndex = ed.session.doc.positionToIndex(range.end)
+            io.emit('anchor-update', [stIndex, edIndex])
+        })
+
+        // sharedb
+        const sharews = new WebSocket(`ws://${window.location.host}:8080`)
+        const shareconn = new ShareDB.Connection(sharews)
+        const docMatches = window.location.href.match(/\?doc=([a-zA-Z1-9]+)/)
+        // const sharedoc = shareconn.get('docs', docMatches ? docMatches[1] : 'default')
+        const sharedoc = shareconn.get('docs', 'default')
+        sharedoc.subscribe(d => {
+            stopWatch = true
+            ed.setValue(sharedoc.data)
+            ed.moveCursorTo(0,0)
+            ed.focus()
+            stopWatch = false
+        })
+        sharedoc.on('op', (op, mine) => {
+            if (mine) return
+            const index = op.length == 2 ? op[0] : 0
+            const data = op.length === 2 ? op[1] : op[0]
+
+            if (typeof data === 'string') {
+                const pos = ed.session.doc.indexToPosition(index)
+
+                stopWatch = true
+                ed.session.insert(pos, data)
+                stopWatch = false
+            } else {
+                const delCt = data.d
+                const stPos = ed.session.doc.indexToPosition(index)
+                const edPos = ed.session.doc.indexToPosition(index + delCt)
+                const range = { start: stPos, end: edPos }
+
+                stopWatch = true
+                ed.session.remove(range)
+                stopWatch = false
+            }
+        })
 
         // update events
         const addName = (id, name) => {
             const userslist = document.querySelector('#users')
             const usericon = document.createElement('li')
-            usericon.setAttribute('user-id', id)
+            usericon.classList.add(`u-${id}`)
             usericon.innerHTML = name
             userslist.appendChild(usericon)
 
-            usericon.style['background-color'] = idToColor(id)
-            console.log()
+            const color = idToColor(id)
+            const styleTag = document.createElement('style')
+            styleTag.id = `style-${id}`
+            styleTag.innerHTML = `
+                .u-${id} { background-color: ${color}; }
+                .ace_marker-layer .u-${id} { opacity: 0.35; }
+                .ace_marker-layer .u-${id}.empty.ace_start { border-left: 2px solid ${color}; opacity: 0.75; }
+            `
+            document.querySelector('head').appendChild(styleTag)
         }
 
+        const anchorMap = {}
         const setAnchor = (id, anchor) => {
+            if (id in anchorMap) {
+                ed.session.removeMarker(anchorMap[id])
+                delete anchorMap[id]
+            }
 
+            let emptyClass = ''
+            let stindex = anchor[0] > anchor[1] ? anchor[1] : anchor[0]
+            const edindex = anchor[0] > anchor[1] ? anchor[0] : anchor[1]
+            if (stindex === edindex) {
+                stindex = Math.max(0, stindex - 1)
+                emptyClass = 'empty'
+            }
+            const stPos = ed.session.doc.indexToPosition(stindex)
+            const edPos = ed.session.doc.indexToPosition(edindex)
+            const range = ed.selection.getRange()
+            range.start = stPos
+            range.end = edPos
+
+            anchorMap[id] = ed.session.addMarker(range, `u-${id} ${emptyClass}`)
         }
 
         const removeId = id => {
-            document.querySelector(`#users li[user-id="${id}"]`).remove()
+            document.querySelector(`#users li.u-${id}`).remove()
+            document.querySelector(`#style-${id}`).remove()
+            if (id in anchorMap) {
+                ed.session.removeMarker(anchorMap[id])
+                delete anchorMap[id]
+            }
         }
 
         const idToColor = id => {
@@ -90,7 +191,7 @@
         }
 
         const clearAll = () => {
-            document.querySelector('#users').innerHTML = ''
+            for (let key in anchorMap) removeId(key)
         }
 
         // socket initialization

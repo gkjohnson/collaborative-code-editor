@@ -1,4 +1,6 @@
 const ShareDB = require('sharedb')
+ShareDB.types.register(require('ot-text').type)
+const WebSocket = require('ws')
 const WebSocketJSONStream = require('websocket-json-stream')
 const express = require('express')
 const socketio = require('socket.io')
@@ -7,6 +9,12 @@ const http = require('http')
 /* Setup */
 // Static Server
 const app = express()
+app.use((res, req, next) => {
+    const sharedoc = shareconn.get('docs', res.query.doc || 'default')
+    if (!sharedoc.data) sharedoc.create("HELLO\n\nTEST", 'text');
+
+    next()
+})
 app.use('/', express.static('./'))
 
 const server = http.createServer(app);
@@ -26,6 +34,7 @@ io.on('connection', client => {
     
     client.on('anchor-update', msg => {
         // set anchors[id]
+        anchors[id] = msg
         io.emit('anchor-update', { id, anchor: anchors[id] })
     })
 
@@ -50,3 +59,13 @@ console.log(`listening on port ${port}`)
 
 // Share DB
 const share = new ShareDB()
+const shareconn = share.connect()
+
+const shareserver = http.createServer()
+const sharewss = new WebSocket.Server({ server: shareserver })
+sharewss.on('connection', client => {
+    share.listen(new WebSocketJSONStream(client))
+})
+shareserver.listen(8080)
+
+console.log(`ShareDB listening on port 8080`)
