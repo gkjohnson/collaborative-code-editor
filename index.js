@@ -1,24 +1,34 @@
-const StaticServer = require('static-server')
 const ShareDB = require('sharedb')
 const WebSocketJSONStream = require('websocket-json-stream')
+const express = require('express')
 const socketio = require('socket.io')
+const http = require('http')
 
+/* Setup */
 // Static Server
-const server = new StaticServer({ rootPath: '.', port: 80 })
-server.start(() => console.log(`listening on port ${server.port}`))
+const app = express()
+app.use(express.static('/'))
+
+const server = http.createServer(app);
 
 // Socket IO Server
-// TODO: How to merge static-server and io server?
-const ioserver = require('http').createServer();
-const io = socketio(ioserver)
+const io = socketio(server)
+const anchors = {}
+const names = {}
 io.on('connection', client => {
+
+    // TODO: Listen for cursor update
+    // TODO: Update names as people join and leave
 
 	client.on('disconnect', () => {
 
 	})
 })
 
-ioserver.listen(8080)
+// Start Server
+const port = 80
+server.listen(port)
+console.log(`listening on port ${port}`)
 
 // Share DB
 const share = new ShareDB()
