@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Collaborative Ace Editor</title>
+
+    <script type="text/javascript" src="/node_modules/ace-builds/src-min/ace.js"></script>
+    <script type="text/javascript" src="http://localhost:8080/socket.io/socket.io.js"></script>
+
+    <style type="text/css">
+        html, body, #wrapper {
+            height: 100%;
+            padding: 0;
+            margin: 0;
+        }
+
+        #wrapper {
+            display: flex;
+            max-width: 1500px;
+            margin: auto;
+            flex-direction: column;
+            font-family: sans-serif;
+        }
+
+        #editor {
+            flex: 1;
+        }
+
+    </style>
+</head>
+<body>
+    <div id="wrapper">
+        <h1 id="title">TITLE</h1>
+        <ul id="users"></ul>
+        <pre id="editor"></pre>
+    </div>
+    
+    <script>
+        io = io('http://localhost:8080/')
+
+        const ed = ace.edit('editor')
+        ed.setOption('printMargin', false)
+    </script>
+</body>
+</html>

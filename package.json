@@ -1,0 +1,24 @@
+{
+  "name": "collaborative-code-editor",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gkjohnson/collaborative-code-editor.git"
+  },
+  "author": "Garrett Johnson <garrett.kjohnson@gmail.com>",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/gkjohnson/collaborative-code-editor/issues"
+  },
+  "homepage": "https://github.com/gkjohnson/collaborative-code-editor#readme",
+  "dependencies": {
+    "ace-builds": "^1.2.8",
+    "socket.io": "^2.0.3",
+    "static-server": "^2.0.5"
+  }
+}
