@@ -96,6 +96,8 @@
         // socket initialization
         io = io()
         io.on('connect', () => {
+            io.on('disconnect', () => clearAll())
+
             io.once('initialize', e => {
                 for (let id in e.anchors)   io.id !== id && setAnchor(id, e.anchors[id])
                 for (let id in e.names)     io.id !== id && addName(id, e.names[id])
@@ -116,7 +118,6 @@
 
                 removeId(e.id)
             })
-            io.emit('ready')
         })
     </script>
 </body>
