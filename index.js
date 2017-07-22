@@ -6,18 +6,19 @@ const express = require('express')
 const socketio = require('socket.io')
 const http = require('http')
 
-/* Setup */
 // Static Server
 const app = express()
+const server = http.createServer(app);
 app.use((res, req, next) => {
-    const sharedoc = shareconn.get('docs', res.query.doc || 'default')
-    if (!sharedoc.data) sharedoc.create("HELLO\n\nTEST", 'text');
+    // Create the document if it hasn't been already
+    // const sharedoc = shareconn.get('docs', res.query.doc || 'default')
+    const sharedoc = shareconn.get('docs', 'default')
+    if (sharedoc.data == null) sharedoc.create("", 'text');
 
     next()
 })
 app.use('/', express.static('./'))
 
-const server = http.createServer(app);
 
 // Socket IO Server
 const io = socketio(server)
@@ -43,7 +44,7 @@ io.on('connection', client => {
     // Remove id info and update clients
     // TODO: This doesn't seem to always get called
     // Mashing resfresh on a page seems to leave lingering
-    // connections
+    // connections that eventually close
     client.on('disconnect', () => {
         console.log('left', id)
         delete names[id]
@@ -60,12 +61,9 @@ console.log(`listening on port ${port}`)
 // Share DB
 const share = new ShareDB()
 const shareconn = share.connect()
-
 const shareserver = http.createServer()
 const sharewss = new WebSocket.Server({ server: shareserver })
-sharewss.on('connection', client => {
-    share.listen(new WebSocketJSONStream(client))
-})
+sharewss.on('connection', client => share.listen(new WebSocketJSONStream(client)))
 shareserver.listen(8080)
 
 console.log(`ShareDB listening on port 8080`)

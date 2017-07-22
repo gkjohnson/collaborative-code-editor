@@ -73,17 +73,12 @@
             const edindex = ed.session.doc.positionToIndex(e.end)
             op.push(stindex)
 
-            console.log(e.end, edindex)
-
-            console.log(e.action)
             if (e.action === 'insert') {
                 op.push(e.lines.join(ed.session.doc.getNewLineCharacter()))
             } else if (e.action === 'remove') {
                 const delCt = e.lines.join(ed.session.doc.getNewLineCharacter()).length
                 op.push({ d: delCt})
             }
-
-            console.log(op)
 
             sharedoc.submitOp(op)
         })
