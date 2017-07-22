@@ -4,7 +4,7 @@
     <title>Collaborative Ace Editor</title>
 
     <script type="text/javascript" src="/node_modules/ace-builds/src-min/ace.js"></script>
-    <script type="text/javascript" src="http://localhost:8080/socket.io/socket.io.js"></script>
+    <script type="text/javascript" src="/socket.io/socket.io.js"></script>
 
     <style type="text/css">
         html, body, #wrapper {
@@ -25,6 +25,22 @@
             flex: 1;
         }
 
+        #users {
+            list-style: none;
+            margin: 0;
+        }
+
+        #users li {
+            width: 25px;
+            height: 25px;
+            background: red;
+            margin: 2px;
+            color: white;
+            float: right;
+            text-align: center;
+            line-height: 25px;
+        }
+
     </style>
 </head>
 <body>
@@ -35,10 +51,73 @@
     </div>
     
     <script>
-        io = io('http://localhost:8080/')
-
+        // initialize editor
         const ed = ace.edit('editor')
         ed.setOption('printMargin', false)
+
+        // update events
+        const addName = (id, name) => {
+            const userslist = document.querySelector('#users')
+            const usericon = document.createElement('li')
+            usericon.setAttribute('user-id', id)
+            usericon.innerHTML = name
+            userslist.appendChild(usericon)
+
+            usericon.style['background-color'] = idToColor(id)
+            console.log()
+        }
+
+        const setAnchor = (id, anchor) => {
+
+        }
+
+        const removeId = id => {
+            document.querySelector(`#users li[user-id="${id}"]`).remove()
+        }
+
+        const idToColor = id => {
+            let total = 0
+            for (let c of id) total += c.charCodeAt(0)
+
+            let hex = total.toString(16)
+            while(hex.length < 3) hex += hex[hex.length - 1]
+            hex = hex.substr(0, 3)
+
+            let color = '#'
+            for (let c of hex) color += `${c}0`
+
+            return color
+        }
+
+        const clearAll = () => {
+            document.querySelector('#users').innerHTML = ''
+        }
+
+        // socket initialization
+        io = io()
+        io.on('connect', () => {
+            io.once('initialize', e => {
+                for (let id in e.anchors)   io.id !== id && setAnchor(id, e.anchors[id])
+                for (let id in e.names)     io.id !== id && addName(id, e.names[id])
+            })
+            io.on('anchor-update', e => {
+                if (io.id === e.id) return
+
+                setAnchor(e.id, e.anchor)
+            })
+            io.on('id-join', e => {
+                if (io.id === e.id) return
+
+                addName(e.id, e.name)
+                setAnchor(e.id, e.anchor)
+            })
+            io.on('id-left', e => {
+                if (io.id === e.id) return
+
+                removeId(e.id)
+            })
+            io.emit('ready')
+        })
     </script>
 </body>
 </html>

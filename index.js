@@ -7,7 +7,7 @@ const http = require('http')
 /* Setup */
 // Static Server
 const app = express()
-app.use(express.static('/'))
+app.use('/', express.static('./'))
 
 const server = http.createServer(app);
 
@@ -17,12 +17,33 @@ const anchors = {}
 const names = {}
 io.on('connection', client => {
 
-    // TODO: Listen for cursor update
-    // TODO: Update names as people join and leave
+    client.once('ready', () => {
 
-	client.on('disconnect', () => {
+        const id = client.id
+        names[id] = String.fromCharCode(Math.floor('A'.charCodeAt(0) + Math.random() * 26))
+        anchors[id] = [0, 0]
 
-	})
+        // send client its id and anchor and names obj
+        client.emit('initialize', { anchors, names })
+        
+        client.on('anchor-update', msg => {
+            // set anchors[id]
+            io.emit('anchor-update', { id, anchor: anchors[id] })
+        })
+
+        io.emit('id-join', { id, name: names[id], anchor: anchors[id] })
+
+        // Remove id info and update clients
+        // TODO: This doesn't seem to always get called
+        // Mashing resfresh on a page seems to leave lingering
+        // connections
+    	client.on('disconnect', () => {
+            console.log('left', id)
+            delete names[id]
+            delete anchors[id]
+            io.emit('id-left', { id })
+    	})
+    })
 })
 
 // Start Server
