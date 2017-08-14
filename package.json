@@ -18,6 +18,7 @@
   "homepage": "https://github.com/gkjohnson/collaborative-code-editor#readme",
   "dependencies": {
     "ace-builds": "^1.2.8",
+    "code-mirror": "^4.0.1",
     "express": "^4.15.3",
     "ot-text": "^1.0.1",
     "socket.io": "^2.0.3",
