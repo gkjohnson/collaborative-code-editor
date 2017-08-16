@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Collaborative Ace Editor</title>
+
+    <script type="text/javascript" src="/node_modules/ace-builds/src-min/ace.js"></script>
+    <script type="text/javascript" src="/sharedb-dist/sharedb-client.min.js"></script>
+    <script type="text/javascript" src="/sharedb-dist/ot-text.min.js"></script>
+    <script type="text/javascript" src="/socket.io/socket.io.js"></script>
+
+    <style type="text/css">
+        html, body, #wrapper {
+            height: 100%;
+            padding: 0;
+            margin: 0;
+        }
+
+        #wrapper {
+            display: flex;
+            max-width: 1500px;
+            margin: auto;
+            flex-direction: column;
+            font-family: sans-serif;
+        }
+
+        #editor {
+            flex: 1;
+        }
+
+        #users {
+            list-style: none;
+            margin: 0;
+        }
+
+        #users li {
+            width: 25px;
+            height: 25px;
+            margin: 2px;
+            color: white;
+            float: right;
+            text-align: center;
+            line-height: 25px;
+        }
+
+        .ace_marker-layer div {
+            border-radius: 0;
+            position: absolute;
+            opacity: 0.5;
+        }
+
+        .ace_marker-layer .cursor {
+            animation: cursorThrob 1s infinite;
+        }
+
+        @keyframes cursorThrob {
+            0% { opacity: 0.5 }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div id="wrapper">
+        <ul id="users"></ul>
+        <pre id="editor"></pre>
+    </div>
+    
+    <script>
+        // Indicates whether or not we should not watch
+        // changes emitted by the editor due to changes made
+        // via operations
+        let stopWatch = false
+
+        // Initialize Editor //
+        const ed = ace.edit('editor')
+        ed.setOption('printMargin', false)
+        
+        // Create operations for sharedb based on the editor
+        ed.on('change', e => {
+            if (stopWatch) return
+
+            const op = []
+            const stindex = ed.session.doc.positionToIndex(e.start)
+            const edindex = ed.session.doc.positionToIndex(e.end)
+            op.push(stindex)
+
+            if (e.action === 'insert') {
+                op.push(e.lines.join(ed.session.doc.getNewLineCharacter()))
+            } else if (e.action === 'remove') {
+                const delCt = e.lines.join(ed.session.doc.getNewLineCharacter()).length
+                op.push({ d: delCt})
+            }
+
+            sharedoc.submitOp(op)
+        })
+
+        // Update the range in other editors when the selection changes
+        ed.on('changeSelection', e => {
+            const range = ed.getSelectionRange()
+            const stindex = ed.session.doc.positionToIndex(range.start)
+            const edindex = ed.session.doc.positionToIndex(range.end)
+            const anchorPos = ed.selection.selectionAnchor
+            const prefixed = anchorPos.row !== range.start.row || anchorPos.column !== range.start.column
+
+            io.emit('anchor-update', { stindex, edindex, prefixed })
+        })
+
+        // ShareDB init //
+        const sharews = new WebSocket(`ws://${window.location.host}:8080`)
+        const shareconn = new ShareDB.Connection(sharews)
+        const docMatches = window.location.href.match(/\?doc=([a-zA-Z1-9]+)/)
+        // const sharedoc = shareconn.get('docs', docMatches ? docMatches[1] : 'default')
+        const sharedoc = shareconn.get('docs', 'default')
+        
+        // Listen for changes to the document
+        sharedoc.subscribe(d => {
+            stopWatch = true
+            ed.setValue(sharedoc.data)
+            ed.moveCursorTo(0,0)
+            ed.focus()
+            stopWatch = false
+        })
+        sharedoc.on('op', (op, mine) => {
+            if (mine) return
+            const index = op.length == 2 ? op[0] : 0
+            const data = op.length === 2 ? op[1] : op[0]
+
+            // insert operation if the op is of the form
+            // op [<index>, <string>]
+            if (typeof data === 'string') {
+                const pos = ed.session.doc.indexToPosition(index)
+
+                stopWatch = true
+                ed.session.insert(pos, data)
+                stopWatch = false
+
+            // otherwise we assume its a deletion of the form
+            // op [<index>, { d: <char count> }]
+            } else {
+                const delCt = data.d
+                const stPos = ed.session.doc.indexToPosition(index)
+                const edPos = ed.session.doc.indexToPosition(index + delCt)
+                const range = { start: stPos, end: edPos }
+
+                stopWatch = true
+                ed.session.remove(range)
+                stopWatch = false
+            }
+        })
+
+        // ShareDB-Independent update events
+        const addName = (id, name) => {
+            const userslist = document.querySelector('#users')
+            const usericon = document.createElement('li')
+            usericon.classList.add(`u-${id}`)
+            usericon.innerHTML = name
+            userslist.appendChild(usericon)
+
+            const color = idToColor(id)
+            const styleTag = document.createElement('style')
+            styleTag.id = `style-${id}`
+            styleTag.innerHTML = `
+                .u-${id} { background-color: ${color}; }
+                .ace_marker-layer .u-${id} { opacity: 0.35; }
+                .ace_marker-layer .u-${id}.empty.ace_start { border-left: 2px solid ${color}; opacity: 0.75; }
+                .ace_marker-layer .u-${id}.cursor { opacity: 1; background-color: transparent; }
+                .ace_marker-layer .u-${id}.cursor.left { border-left: 2px solid ${color} }
+                .ace_marker-layer .u-${id}.cursor.right { border-right: 2px solid ${color} }
+
+            `
+            document.querySelector('head').appendChild(styleTag)
+        }
+
+        const anchorMap = {}
+        const setAnchor = (id, anchor) => {
+            if (id in anchorMap) {
+                anchorMap[id].forEach(id => {
+                    ed.session.removeMarker(id)
+                })
+                delete anchorMap[id]
+            }
+
+            // Whether or not the cursor is actually at the beginning
+            // or end of the selection
+            let emptyClass = ''
+            let stindex = anchor.stindex
+            const edindex = anchor.edindex
+
+            // Add selection
+            let stPos, edPos, range
+            anchorMap[id] = []
+            
+            if(stindex !== edindex) {
+                stPos = ed.session.doc.indexToPosition(stindex)
+                edPos = ed.session.doc.indexToPosition(edindex)
+                range = ed.selection.getRange()
+                range.start = stPos
+                range.end = edPos
+
+                anchorMap[id].push(ed.session.addMarker(range, `u-${id}`))
+            }
+
+
+            if (stindex === edindex) {
+                stindex = Math.max(0, stindex - 1)
+                emptyClass = 'empty'
+            }
+
+            // Add cursor
+            const index = anchor.prefixed ? stindex : edindex
+            stPos = ed.session.doc.indexToPosition(index + (anchor.prefixed ? 0 : -1))
+            edPos = ed.session.doc.indexToPosition(index + (anchor.prefixed ? 1 : 0))
+            range = ed.selection.getRange()
+            range.start = stPos
+            range.end = edPos
+
+            anchorMap[id].push(ed.session.addMarker(range, `u-${id} ${emptyClass} cursor ${anchor.prefixed ? "left" : "right"}`))
+        }
+
+        const removeId = id => {
+            document.querySelector(`#users li.u-${id}`).remove()
+            document.querySelector(`#style-${id}`).remove()
+            if (id in anchorMap) {
+                anchorMap[id].forEach(m => ed.session.removeMarker(m))
+                delete anchorMap[id]
+            }
+        }
+
+        const idToColor = id => {
+            let total = 0
+            for (let c of id) total += c.charCodeAt(0)
+
+            let hex = total.toString(16)
+            while(hex.length < 3) hex += hex[hex.length - 1]
+            hex = hex.substr(0, 3)
+
+            let color = '#'
+            for (let c of hex) color += `${c}0`
+
+            return color
+        }
+
+        const clearAll = () => {
+            for (let key in anchorMap) removeId(key)
+        }
+
+        // Websocket Initialization
+        io = io()
+        io.on('connect', () => {
+            io.on('disconnect', () => clearAll())
+
+            io.once('initialize', e => {
+                for (let id in e.anchors)   io.id !== id && setAnchor(id, e.anchors[id])
+                for (let id in e.names)     io.id !== id && addName(id, e.names[id])
+            })
+            io.on('anchor-update', e => {
+                if (io.id === e.id) return
+
+                setAnchor(e.id, e.anchor)
+            })
+            io.on('id-join', e => {
+                if (io.id === e.id) return
+
+                addName(e.id, e.name)
+                setAnchor(e.id, e.anchor)
+            })
+            io.on('id-left', e => {
+                if (io.id === e.id) return
+
+                removeId(e.id)
+            })
+        })
+    </script>
+</body>
+</html>
