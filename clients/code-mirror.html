@@ -3,11 +3,13 @@
 <head>
     <title>Collaborative Ace Editor</title>
 
-    <script type="text/javascript" src="/node_modules/ace-builds/src-min/ace.js"></script>
+    <script type="text/javascript" src="/node_modules/codemirror/lib/codemirror.js"></script>
+    <script type="text/javascript" src="/node_modules/codemirror/addon/selection/mark-selection.js"></script>
     <script type="text/javascript" src="/sharedb-dist/sharedb-client.min.js"></script>
     <script type="text/javascript" src="/sharedb-dist/ot-text.min.js"></script>
     <script type="text/javascript" src="/socket.io/socket.io.js"></script>
 
+    <link rel="stylesheet" href="/node_modules/codemirror/lib/codemirror.css" />
     <style type="text/css">
         html, body, #wrapper {
             height: 100%;
@@ -25,6 +27,7 @@
 
         #editor {
             flex: 1;
+            overflow: hidden;
         }
 
         #users {
@@ -42,14 +45,8 @@
             line-height: 25px;
         }
 
-        .ace_marker-layer div {
-            border-radius: 0;
-            position: absolute;
-            opacity: 0.5;
-        }
-
-        .ace_marker-layer .cursor {
-            animation: cursorThrob 1s infinite;
+        .CodeMirror {
+            height: 100%;
         }
 
         @keyframes cursorThrob {
@@ -62,7 +59,9 @@
 <body>
     <div id="wrapper">
         <ul id="users"></ul>
-        <pre id="editor"></pre>
+        <div id="editor">
+            <textarea></textarea>
+        </div>
     </div>
     
     <script>
@@ -72,35 +71,33 @@
         let stopWatch = false
 
         // Initialize Editor //
-        const ed = ace.edit('editor')
-        ed.setOption('printMargin', false)
+        const ed = CodeMirror.fromTextArea(document.querySelector('textarea'), { lineNumbers: true });
         
         // Create operations for sharedb based on the editor
-        ed.on('change', e => {
+        ed.on('change', (ed, chg) => {
             if (stopWatch) return
 
-            const op = []
-            const stindex = ed.session.doc.positionToIndex(e.start)
-            const edindex = ed.session.doc.positionToIndex(e.end)
-            op.push(stindex)
+            console.log(chg)
+            const stindex = ed.indexFromPos(chg.from)
+            const edindex = ed.indexFromPos(chg.to)
+            const delta = edindex - stindex
 
-            if (e.action === 'insert') {
-                op.push(e.lines.join(ed.session.doc.getNewLineCharacter()))
-            } else if (e.action === 'remove') {
-                const delCt = e.lines.join(ed.session.doc.getNewLineCharacter()).length
-                op.push({ d: delCt})
-            }
+            const addedText = chg.text.pop()
 
-            sharedoc.submitOp(op)
+            if (delta) sharedoc.submitOp([stindex, { d: delta }])
+            if (addedText) sharedoc.submitOp([stindex, addedText])
         })
 
         // Update the range in other editors when the selection changes
-        ed.on('changeSelection', e => {
-            const range = ed.getSelectionRange()
-            const stindex = ed.session.doc.positionToIndex(range.start)
-            const edindex = ed.session.doc.positionToIndex(range.end)
-            const anchorPos = ed.selection.selectionAnchor
-            const prefixed = anchorPos.row !== range.start.row || anchorPos.column !== range.start.column
+        ed.on('cursorActivity', e => {
+            const stPos = ed.getCursor('start')
+            const edPos = ed.getCursor('end')
+            const hdPos = ed.getCursor('head')
+
+            const stindex = ed.indexFromPos(stPos)
+            const edindex = ed.indexFromPos(edPos)
+            const hdindex = ed.indexFromPos(hdPos)
+            const prefixed = hdindex === stindex && stindex !== edindex
 
             io.emit('anchor-update', { stindex, edindex, prefixed })
         })
@@ -116,7 +113,7 @@
         sharedoc.subscribe(d => {
             stopWatch = true
             ed.setValue(sharedoc.data)
-            ed.moveCursorTo(0,0)
+            ed.setCursor(0,0)
             ed.focus()
             stopWatch = false
         })
@@ -128,22 +125,22 @@
             // insert operation if the op is of the form
             // op [<index>, <string>]
             if (typeof data === 'string') {
-                const pos = ed.session.doc.indexToPosition(index)
+                const pos = ed.posFromIndex(index)
 
                 stopWatch = true
-                ed.session.insert(pos, data)
+                ed.replaceRange(data, pos, pos)
                 stopWatch = false
 
             // otherwise we assume its a deletion of the form
             // op [<index>, { d: <char count> }]
             } else {
                 const delCt = data.d
-                const stPos = ed.session.doc.indexToPosition(index)
-                const edPos = ed.session.doc.indexToPosition(index + delCt)
+                const stPos = ed.session.doc.posFromIndex(index)
+                const edPos = ed.session.doc.posFromIndex(index + delCt)
                 const range = { start: stPos, end: edPos }
 
                 stopWatch = true
-                ed.session.remove(range)
+                ed.replaceRange('', stPos, edPos)
                 stopWatch = false
             }
         })
@@ -161,22 +158,21 @@
             styleTag.id = `style-${id}`
             styleTag.innerHTML = `
                 .u-${id} { background-color: ${color}; }
-                .ace_marker-layer .u-${id} { opacity: 0.35; }
-                .ace_marker-layer .u-${id}.empty.ace_start { border-left: 2px solid ${color}; opacity: 0.75; }
-                .ace_marker-layer .u-${id}.cursor { opacity: 1; background-color: transparent; }
-                .ace_marker-layer .u-${id}.cursor.left { border-left: 2px solid ${color} }
-                .ace_marker-layer .u-${id}.cursor.right { border-right: 2px solid ${color} }
+                .CodeMirror-line .u-${id}                   { background-color: ${hexToRgbaStyle(color, 0.35)}; }
+                .CodeMirror-line .u-${id}.cursor            { opacity: 1; }
+                .CodeMirror-line .u-${id}.cursor.left       { border-left: 2px solid ${color}; }
+                .CodeMirror-line .u-${id}.cursor.right      { border-right: 2px solid ${color}; }
+                .CodeMirror-line .u-${id}.empty             { background-color: transparent; }
 
             `
+            console.log(hexToRgbaStyle(color, 0.35))
             document.querySelector('head').appendChild(styleTag)
         }
 
         const anchorMap = {}
         const setAnchor = (id, anchor) => {
             if (id in anchorMap) {
-                anchorMap[id].forEach(id => {
-                    ed.session.removeMarker(id)
-                })
+                anchorMap[id].forEach(m => m.clear())
                 delete anchorMap[id]
             }
 
@@ -191,38 +187,30 @@
             anchorMap[id] = []
             
             if(stindex !== edindex) {
-                stPos = ed.session.doc.indexToPosition(stindex)
-                edPos = ed.session.doc.indexToPosition(edindex)
-                range = ed.selection.getRange()
-                range.start = stPos
-                range.end = edPos
+                stPos = ed.posFromIndex(stindex)
+                edPos = ed.posFromIndex(edindex)
 
-                anchorMap[id].push(ed.session.addMarker(range, `u-${id} ${emptyClass}`))
+                anchorMap[id].push(ed.markText(stPos, edPos, { className: `u-${id}` }))
             }
-
 
             if (stindex === edindex) {
                 stindex = Math.max(0, stindex - 1)
+                emptyClass = 'empty'
             }
 
             // Add cursor
             const index = anchor.prefixed ? stindex : edindex
-            stPos = ed.session.doc.indexToPosition(index)
-            edPos = ed.session.doc.indexToPosition(index + (anchor.prefixed ? 1 : -1))
-            range = ed.selection.getRange()
-            range.start = stPos
-            range.end = edPos
+            stPos = ed.posFromIndex(index + (anchor.prefixed ? 0 : -1))
+            edPos = ed.posFromIndex(index + (anchor.prefixed ? 1 : 0))
 
-            console.log(anchor.prefixed, `u-${id} ${emptyClass} cursor ${anchor.prefixed ? "left" : "right"}`)
-
-            anchorMap[id].push(ed.session.addMarker(range, `u-${id} ${emptyClass} cursor ${anchor.prefixed ? "left" : "right"}`))
+            anchorMap[id].push(ed.markText(stPos, edPos, { className: `u-${id} ${emptyClass} cursor ${anchor.prefixed ? "left" : "right"}` }))
         }
 
         const removeId = id => {
             document.querySelector(`#users li.u-${id}`).remove()
             document.querySelector(`#style-${id}`).remove()
             if (id in anchorMap) {
-                ed.session.removeMarker(anchorMap[id])
+                anchorMap[id].forEach(m => m.clear())
                 delete anchorMap[id]
             }
         }
@@ -239,6 +227,26 @@
             for (let c of hex) color += `${c}0`
 
             return color
+        }
+
+        const hexToRgbaStyle = (hex, opacity) => {
+            hex = hex.replace('#', '')
+            let r, g, b, den
+            if (hex.length === 3) {
+                r = hex[0] + hex[0]
+                g = hex[1] + hex[1]
+                b = hex[2] + hex[2]
+            } else {
+                r = hex.substr(0, 2)
+                g = hex.substr(2, 2)
+                b = hex.substr(4, 2)
+            }
+
+            r = parseInt(r, 16)
+            g = parseInt(g, 16)
+            b = parseInt(b, 16)
+
+            return `rgba(${r},${g},${b},${opacity})`
         }
 
         const clearAll = () => {
