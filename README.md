@@ -9,3 +9,11 @@ Collaborative Text Editor example with selection synchronization, active user di
 Uses `ot-text` as an example format, but could easily be updated to use `ot-text-tp2` or other OT formats.
 
 Because ShareDB requires precompiling source to load, a pre-built version of sharedb is copied from [this repo](https://github.com/gkjohnson/sharedb-builds).
+
+## How To Run
+
+Run `npm install`.
+
+Then `npm start`.
+
+A static file server will start on port `80`, and the ShareDB connection on port `8080`. Load up `http://localhost/clients/ace-editor.html` or `http://localhost/clients/code-mirror.html` to get collaborating!
