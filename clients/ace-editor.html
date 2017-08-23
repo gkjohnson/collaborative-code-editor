@@ -11,8 +11,14 @@
     <style type="text/css">
         html, body, #wrapper {
             height: 100%;
-            padding: 0;
+            font-family: helvetica, arial, sans-serif;
+            overflow: hidden;
+
+        }
+        
+        h1 {
             margin: 0;
+            padding: 0;
         }
 
         #wrapper {
@@ -61,6 +67,7 @@
 </head>
 <body>
     <div id="wrapper">
+        <h1>Ace Editor</h1>
         <ul id="users"></ul>
         <pre id="editor"></pre>
     </div>
@@ -162,7 +169,7 @@
             styleTag.innerHTML = `
                 .u-${id} { background-color: ${color}; }
                 .ace_marker-layer .u-${id} { opacity: 0.35; }
-                .ace_marker-layer .u-${id}.empty.ace_start { border-left: 2px solid ${color}; opacity: 0.75; }
+                .ace_marker-layer .u-${id}.empty { background-color: transparent; }
                 .ace_marker-layer .u-${id}.cursor { opacity: 1; background-color: transparent; }
                 .ace_marker-layer .u-${id}.cursor.left { border-left: 2px solid ${color} }
                 .ace_marker-layer .u-${id}.cursor.right { border-right: 2px solid ${color} }

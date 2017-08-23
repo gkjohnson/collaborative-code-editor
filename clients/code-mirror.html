@@ -13,8 +13,13 @@
     <style type="text/css">
         html, body, #wrapper {
             height: 100%;
-            padding: 0;
+            font-family: helvetica, arial, sans-serif;
+            overflow: hidden;
+        }
+
+        h1 {
             margin: 0;
+            padding: 0;
         }
 
         #wrapper {
@@ -58,6 +63,7 @@
 </head>
 <body>
     <div id="wrapper">
+        <h1>Code Mirror</h1>
         <ul id="users"></ul>
         <div id="editor">
             <textarea></textarea>
@@ -77,12 +83,10 @@
         ed.on('change', (ed, chg) => {
             if (stopWatch) return
 
-            console.log(chg)
             const stindex = ed.indexFromPos(chg.from)
-            const edindex = ed.indexFromPos(chg.to)
-            const delta = edindex - stindex
+            const delta = chg.removed.join('\n').length
+            const addedText = chg.text.join('\n')
 
-            const addedText = chg.text.pop()
 
             if (delta) sharedoc.submitOp([stindex, { d: delta }])
             if (addedText) sharedoc.submitOp([stindex, addedText])
@@ -135,8 +139,8 @@
             // op [<index>, { d: <char count> }]
             } else {
                 const delCt = data.d
-                const stPos = ed.session.doc.posFromIndex(index)
-                const edPos = ed.session.doc.posFromIndex(index + delCt)
+                const stPos = ed.posFromIndex(index)
+                const edPos = ed.posFromIndex(index + delCt)
                 const range = { start: stPos, end: edPos }
 
                 stopWatch = true
@@ -165,7 +169,6 @@
                 .CodeMirror-line .u-${id}.empty             { background-color: transparent; }
 
             `
-            console.log(hexToRgbaStyle(color, 0.35))
             document.querySelector('head').appendChild(styleTag)
         }
 
